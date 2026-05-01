@@ -125,6 +125,31 @@ header h1 {
   50%     { text-shadow: 0 0 14px rgba(240,192,64,0.75); opacity: 1; }
 }
 
+/* ===== SCHRITT-INDIKATOR ===== */
+#step-flow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 0.78em;
+  padding: 2px 0;
+}
+.sf-step {
+  padding: 3px 12px;
+  border-radius: 20px;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  transition: color 0.3s, border-color 0.3s, background 0.3s;
+}
+.sf-step.sf-active {
+  color: var(--accent-gold);
+  border-color: rgba(240,192,64,0.55);
+  background: rgba(240,192,64,0.1);
+  font-weight: bold;
+}
+.sf-step.sf-done { color: #22c55e; opacity: 0.55; }
+.sf-arrow { color: var(--text-muted); opacity: 0.45; }
+
 /* ===== HAUPT-3-SPALTEN ===== */
 #main-area {
   display: grid;
@@ -678,6 +703,9 @@ header h1 {
     <div id="quest-list"></div>
   </section>
 
+  <!-- SCHRITT-INDIKATOR -->
+  <div id="step-flow"></div>
+
   <!-- HAUPT-3-SPALTEN -->
   <div id="main-area">
 
@@ -1127,7 +1155,7 @@ function renderSlots() {
  */
 function renderPotionInfo() {
   const panel = document.getElementById('potion-info');
-  panel.className = 'potion-info' + (state.currentPotion ? ' has-potion' : '');
+  panel.className = state.currentPotion ? 'has-potion' : '';
 
   if (state.isBrewing) {
     panel.innerHTML = `<span class="p-brewing">⏳ Der Trank nimmt Gestalt an…</span>`;
@@ -1225,6 +1253,25 @@ function renderQuests() {
   }
 }
 
+/**
+ * Schritt-Indikator über dem Haupt-Spielfeld.
+ * Zeigt immer, in welcher Phase des Brau-Ablaufs sich der Spieler befindet.
+ */
+function renderStepFlow() {
+  const el = document.getElementById('step-flow');
+  let step;
+  if (state.currentPotion)                              step = 3;
+  else if (state.selected.length > 0 || state.isBrewing) step = 2;
+  else                                                  step = 1;
+
+  const labels = ['① Zutaten wählen', '② Trank brauen', '③ Ziel anwenden'];
+  el.innerHTML = labels.map((label, i) => {
+    const n = i + 1;
+    const cls = 'sf-step' + (n === step ? ' sf-active' : n < step ? ' sf-done' : '');
+    return `<span class="${cls}">${label}</span>`;
+  }).join('<span class="sf-arrow"> › </span>');
+}
+
 /** Alles auf einmal neu rendern. */
 function renderAll() {
   renderIngredients();
@@ -1232,6 +1279,7 @@ function renderAll() {
   renderPotionInfo();
   renderTargets();
   renderQuests();
+  renderStepFlow();
   // newlyCompleted nach dem Rendern leeren, damit .just-done nur einmal abgespielt wird
   state.newlyCompleted = [];
 }
@@ -1296,8 +1344,8 @@ function brew() {
     document.getElementById('cauldron-liquid').style.background =
       `radial-gradient(ellipse, ${effect.liquidColor}cc, ${effect.liquidColor})`;
 
-    // Rezept ins Buch eintragen wenn neu
-    recordRecipe(effect);
+    // Rezept ins Buch eintragen wenn neu (state.selected noch ungeleert)
+    recordRecipe(effect, state.selected);
 
     renderAll();
   }, 1000);
@@ -1366,17 +1414,11 @@ function cancelEffectTimer(targetId) {
  * Neues Rezept ins Rezeptbuch eintragen (wenn noch nicht bekannt).
  * Schlüssel = sortierte IDs → Reihenfolge egal.
  */
-function recordRecipe(effect) {
-  const key = [...state.selected].sort().join('+');
-  const alreadyKnown = state.discovered.some(r => r.key === key && r.effectId === effect.id);
-  if (!alreadyKnown) {
-    state.discovered.push({
-      key,
-      effectId: effect.id,
-      ingredients: [...state.selected],
-    });
-    showToast(`📖 Neues Rezept entdeckt: ${effect.icon} ${effect.name}!`);
-  }
+function recordRecipe(effect, ingredientIds) {
+  const key = [...ingredientIds].sort().join('+');
+  if (state.discovered.some(r => r.key === key)) return;
+  state.discovered.push({ key, effectId: effect.id, ingredients: [...ingredientIds] });
+  showToast(`📖 Neues Rezept entdeckt: ${effect.icon} ${effect.name}!`);
 }
 
 // ============================================================
