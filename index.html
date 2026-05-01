@@ -87,11 +87,43 @@ header h1 {
   border-radius: 8px;
   padding: 6px 9px;
   font-size: 0.82em;
-  transition: all 0.3s;
+  transition: border-color 0.3s, background 0.3s, opacity 0.3s;
 }
-.quest-card.done { background: rgba(34,197,94,0.15); border-color: #22c55e; opacity: 0.65; }
+.quest-card.done {
+  background: rgba(34,197,94,0.15);
+  border-color: #22c55e;
+  opacity: 0.6;
+}
+/* Nächste offene Aufgabe wird leicht hervorgehoben */
+.quest-card.next-quest {
+  border-color: rgba(240,192,64,0.55);
+  box-shadow: 0 0 8px rgba(240,192,64,0.18);
+}
+/* Kurzer Flash-Effekt bei Erfüllung */
+.quest-card.just-done {
+  animation: quest-flash 0.65s ease-out forwards;
+}
+@keyframes quest-flash {
+  0%   { transform: scale(1);    border-color: var(--border); }
+  30%  { transform: scale(1.06); border-color: #22c55e; box-shadow: 0 0 22px rgba(34,197,94,0.75); }
+  100% { transform: scale(1);    border-color: #22c55e; }
+}
 .quest-card .q-title { font-weight: bold; color: var(--accent-gold); display: block; }
 .quest-card .q-desc  { color: var(--text-muted); }
+
+/* Banner wenn alle Aufträge erfüllt sind */
+.all-done-banner {
+  width: 100%;
+  text-align: center;
+  font-size: 0.9em;
+  color: var(--accent-gold);
+  padding: 6px 0 2px;
+  animation: glow-text 2s ease-in-out infinite;
+}
+@keyframes glow-text {
+  0%,100% { text-shadow: none; opacity: 0.85; }
+  50%     { text-shadow: 0 0 14px rgba(240,192,64,0.75); opacity: 1; }
+}
 
 /* ===== HAUPT-3-SPALTEN ===== */
 #main-area {
@@ -391,6 +423,51 @@ header h1 {
 .t-visual { font-size: 3em; display: block; margin-bottom: 4px; transition: filter 0.4s, transform 0.4s; }
 .t-name   { font-size: 0.88em; font-weight: bold; }
 .t-status { font-size: 0.73em; color: var(--text-muted); min-height: 15px; display: block; margin-top: 2px; }
+
+/* Outline wenn ein Trank angewendet werden kann – lenkt Blick auf Ziele */
+.target-card.ready-to-receive {
+  outline: 2px solid rgba(139,92,246,0.55);
+  outline-offset: 2px;
+}
+
+/* ===== ZIELABHÄNGIGE EFFEKT-VARIANTEN =====
+   Compound-Selektoren mit höherer Spezifizität überschreiben die
+   generischen fx-* Basiseffekte für bestimmte Ziel-Kombinationen.
+   Syntax: .fx-{effekt}.target-{ziel} .t-visual
+*/
+
+/* Wachstum auf Pflanze: deutlich größer */
+.fx-growth.target-plant .t-visual { transform: scale(1.7) !important; }
+
+/* Wachstum auf Dummy: komisch vergrößerter Kopf (visuell übertrieben) */
+.fx-growth.target-dummy .t-visual { transform: scale(1.55) translateY(-6px) !important; }
+
+/* Feuer auf Pflanze: angesengt und dunkel */
+.fx-fire.target-plant .t-visual {
+  filter: sepia(1) saturate(0.2) brightness(0.55) drop-shadow(0 0 6px #ef4444) !important;
+}
+
+/* Glazialtrank auf Spieler: Eisskulptur — sehr hell + blau */
+.fx-glacial.target-player .t-visual {
+  filter: brightness(2.2) saturate(0.1) drop-shadow(0 0 18px #3b82f6) !important;
+}
+
+/* Dunkeltrank auf Spieler: fast unsichtbar */
+.fx-darkness.target-player .t-visual { filter: brightness(0.06) !important; }
+
+/* Inferno auf Pflanze: komplett ausgebrannt */
+.fx-inferno.target-plant .t-visual {
+  filter: sepia(1) saturate(0) brightness(0.4) drop-shadow(0 0 10px #dc2626) !important;
+  animation: shake 0.25s ease-in-out infinite !important;
+}
+
+/* Gifttrank auf Pflanze: Pflanze mutiert (grüner Glow, kein Rot-Shift) */
+.fx-poison.target-plant .t-visual {
+  filter: drop-shadow(0 0 12px #22c55e) hue-rotate(120deg) saturate(2) !important;
+}
+
+/* Stärketrank auf Dummy: noch größer */
+.fx-strength.target-dummy .t-visual { transform: scale(1.35) !important; }
 
 /* ===== EFFEKT-KLASSEN FÜR ZIELKARTEN =====
    Jede Klasse setzt: Rahmenfarbe, Hintergrund, Filter/Animation auf .t-visual
@@ -743,6 +820,101 @@ const EFFECTS = [
   { id: 'unstable',  priority:  0, requiredTags: [],                        name: 'Unstabiler Trank', icon: '💥', liquidColor: '#6366f1', desc: 'Unbekannte Kombination — Wirkung unvorhersehbar.' },
 ];
 
+/**
+ * Zielabhängige Reaktionen für jeden Effekt.
+ * Aufbau: REACTIONS[effectId][targetId] = { text, icon?, temporary?, duration? }
+ *
+ *   text       – charmanter Flavor-Text der nach Anwendung erscheint
+ *   icon       – optionale Emoji-Überschreibung des Ziel-Icons (null = Standard)
+ *   temporary  – true: Effekt läuft nach `duration` ms automatisch ab
+ *   duration   – ms bis zum Reset (nur relevant wenn temporary: true; Standard: 4000)
+ *
+ * Permanente Effekte haben kein `temporary`-Flag (oder false).
+ * Der Icon-Override bleibt dann ebenfalls dauerhaft gesetzt.
+ */
+const REACTIONS = {
+  healing: {
+    player: { text: 'Du fühlst dich verdächtig gut. Fast schon zu gut.' },
+    plant:  { text: 'Die Pflanze erholt sich. Sie war eigentlich nicht krank.' },
+    dummy:  { text: 'Der Dummy absorbiert alles. Er hat keine Wunden.', temporary: true, duration: 3500 },
+  },
+  fire: {
+    player: { text: 'Du brennst kurz. Das ist in Ordnung so.', temporary: true, duration: 3000 },
+    plant:  { text: 'Die Pflanze ist leicht angesengt. Sie sieht beleidigt aus.', icon: '🥀', temporary: true, duration: 5000 },
+    dummy:  { text: 'Der Dummy akzeptiert sein feuriges Schicksal mit Würde.' },
+  },
+  ice: {
+    player: { text: 'Brr. Du bist jetzt ein menschlicher Eislutscher.', icon: '🧊', temporary: true, duration: 4500 },
+    plant:  { text: 'Die Pflanze ist mitten in der Blüte eingefroren. Traurig.', temporary: true, duration: 5000 },
+    dummy:  { text: 'Der Dummy ist tiefgefroren. Sehr würdevoll.' },
+  },
+  poison: {
+    player: { text: 'Du fühlst dich grün. Buchstäblich.', temporary: true, duration: 5000 },
+    plant:  { text: 'Die Pflanze nimmt das Gift auf. Mit Begeisterung.', icon: '🌵' },
+    dummy:  { text: 'Der Dummy ist jetzt ein Biohazard. Bitte nicht anfassen.' },
+  },
+  growth: {
+    player: { text: 'Du bist aggressiv gesund. Das ist irgendwie einschüchternd.', icon: '🧝' },
+    plant:  { text: 'Die Pflanze ist jetzt ein Baum. Die Pflanze ist jetzt ein Baum.', icon: '🌳' },
+    dummy:  { text: 'Der Dummy hat einen riesigen Kopf bekommen. Alle sind verwirrt.', icon: '🗿' },
+  },
+  strength: {
+    player: { text: 'Du könntest wahrscheinlich einen Kessel hochheben.' },
+    plant:  { text: 'Die Pflanze streckt ihre Blätter aus. Einschüchternd.' },
+    dummy:  { text: 'Der Dummy ist jetzt unangemessen muskulös.' },
+  },
+  glow: {
+    player: { text: 'Du leuchtest. Du bist jetzt eine Lampe.' },
+    plant:  { text: 'Die Pflanze leuchtet. Sie hatte darum nicht gebeten.' },
+    dummy:  { text: 'Der Dummy leuchtet im Dunkeln. Endlich nützlich.' },
+  },
+  darkness: {
+    player: { text: 'Du bist im Schatten verschwunden. Gruselig.', icon: '👤' },
+    plant:  { text: 'Die Pflanze ist im Dunkeln. Sie ist damit nicht einverstanden.', icon: '🪴' },
+    dummy:  { text: 'Der Dummy hat sich mit der Leere vereint.', icon: '🕳️' },
+  },
+  vitality: {
+    player: { text: 'Du fühlst dich absolut prächtig. Verdächtig prächtig.' },
+    plant:  { text: 'Die Pflanze vibriert vor Lebensenergie. Ist das normal?', icon: '🌿' },
+    dummy:  { text: 'Der Dummy strahlt Wohlbefinden aus. Irgendwie.', temporary: true, duration: 5000 },
+  },
+  inferno: {
+    player: { text: 'Ohh. Du bist in Ordnung. Größtenteils.', temporary: true, duration: 3500 },
+    plant:  { text: 'Das hat wahrscheinlich gegen das Laborprotokoll verstoßen.', icon: '🌾', temporary: true, duration: 4500 },
+    dummy:  { text: 'Der Dummy hat seine ultimative Bestimmung gefunden.' },
+  },
+  storm: {
+    player: { text: 'Statische Elektrizität. Deine Frisur ist ruiniert.', temporary: true, duration: 4000 },
+    plant:  { text: 'Die Pflanze wurde vom Blitz getroffen. Sie ist elektrisiert.' },
+    dummy:  { text: 'Der Dummy leitet jetzt Strom. Irgendwie.' },
+  },
+  plague: {
+    player: { text: 'Das war ein Fehler. Du riechst nach verbranntem Sumpf.', temporary: true, duration: 4000 },
+    plant:  { text: 'Die Pflanze ist jetzt eine Warnung.', icon: '🪴', temporary: true, duration: 5000 },
+    dummy:  { text: 'Der Dummy ist ein Biohazard-Gebiet. Bitte absperren.' },
+  },
+  glacial: {
+    player: { text: 'Du bist jetzt eine Eisskulptur. Sehr künstlerisch.', temporary: true, duration: 5000 },
+    plant:  { text: 'Die Pflanze ist für immer perfekt konserviert.', icon: '🌸' },
+    dummy:  { text: 'Der Dummy ist eine Eisskulptur. Das ist Kunst.' },
+  },
+  thorn: {
+    player: { text: 'Aua. Überall Dornen. Warum hast du das getan.', temporary: true, duration: 3500 },
+    plant:  { text: 'Die Pflanze ist jetzt ein Verteidigungssystem.', icon: '🌵' },
+    dummy:  { text: 'Der Dummy ist mit Dornen bedeckt. Er findet es gut.' },
+  },
+  sparkle: {
+    player: { text: 'Du schimmerst. Wie eine Disco-Kugel.', temporary: true, duration: 4500 },
+    plant:  { text: 'Die Pflanze hat kristalline Schönheit erreicht.', temporary: true, duration: 5500 },
+    dummy:  { text: 'Der Dummy funkelt. Unerwartet charmant.', temporary: true, duration: 5500 },
+  },
+  unstable: {
+    player: { text: 'Irgendetwas ist passiert. Du weißt nicht was.', temporary: true, duration: 3000 },
+    plant:  { text: 'Die Pflanze sieht verwirrt aus. Du auch.', temporary: true, duration: 3000 },
+    dummy:  { text: 'Das hat wahrscheinlich gegen das Laborprotokoll verstoßen.', temporary: true, duration: 3000 },
+  },
+};
+
 /** Die drei Entitäten, auf die ein Trank angewendet werden kann. */
 const TARGETS = [
   { id: 'player', name: 'Spieler', icon: '🧙', desc: 'Du selbst' },
@@ -808,8 +980,28 @@ const state = {
    */
   isBrewing: false,
 
-  /** Aktiver Effekt-ID pro Ziel (persistenter Status). */
+  /** Aktiver Effekt-ID pro Ziel (persistenter oder laufender temporärer Status). */
   targetEffects: { player: null, plant: null, dummy: null },
+
+  /**
+   * Icon-Überschreibung pro Ziel (aus REACTIONS.icon).
+   * null = Standard-Icon aus TARGETS-Array verwenden.
+   * Wird bei temporären Effekten automatisch zurückgesetzt.
+   */
+  targetIcons: { player: null, plant: null, dummy: null },
+
+  /**
+   * Timer-IDs für temporäre Effekte, die automatisch ablaufen.
+   * Wird genutzt um laufende Timers bei neuem Trank zu canceln.
+   */
+  effectTimers: { player: null, plant: null, dummy: null },
+
+  /**
+   * Auftrags-IDs die im aktuellen Render-Zyklus gerade abgehakt wurden.
+   * Wird in renderAll() nach dem Rendern geleert, damit .just-done nur
+   * einmal gezeichnet wird.
+   */
+  newlyCompleted: [],
 
   /**
    * Liste entdeckter Rezepte fürs Rezeptbuch.
@@ -965,19 +1157,23 @@ function renderPotionInfo() {
 function renderTargets() {
   const list = document.getElementById('target-list');
   list.innerHTML = '';
-  // Ziele nur klickbar wenn ein Trank fertig ist
   const canApply = state.currentPotion !== null && !state.isBrewing;
 
   for (const target of TARGETS) {
     const effectId = state.targetEffects[target.id];
     const card = document.createElement('div');
-    // fx-Klasse setzt den visuellen Effektstatus (CSS-Selektor .fx-*)
+
+    // target-{id} erlaubt zielspezifische CSS-Selektoren (z.B. .fx-growth.target-plant)
     card.className = 'target-card'
+      + ` target-${target.id}`
       + (effectId  ? ` fx-${effectId}` : '')
-      + (canApply  ? '' : ' t-disabled');
+      + (canApply  ? ' ready-to-receive' : ' t-disabled');
+
+    // Icon: Überschreibung aus Reaktionstabelle oder Standard-Icon des Ziels
+    const displayIcon = state.targetIcons[target.id] ?? target.icon;
 
     card.innerHTML = `
-      <span class="t-visual">${target.icon}</span>
+      <span class="t-visual">${displayIcon}</span>
       <span class="t-name">${target.name}</span>
       <span class="t-status">${getTargetStatusLabel(target.id)}</span>`;
 
@@ -998,14 +1194,34 @@ function getTargetStatusLabel(targetId) {
 function renderQuests() {
   const list = document.getElementById('quest-list');
   list.innerHTML = '';
+
+  const allDone  = state.completedQuests.length >= QUESTS.length;
+  // Erste noch nicht erledigte Aufgabe → bekommt next-quest-Highlight
+  const nextId   = QUESTS.find(q => !state.completedQuests.includes(q.id))?.id ?? null;
+
   for (const q of QUESTS) {
-    const done = state.completedQuests.includes(q.id);
+    const done      = state.completedQuests.includes(q.id);
+    const justDone  = state.newlyCompleted.includes(q.id);
+    const isNext    = !done && q.id === nextId;
+
     const div = document.createElement('div');
-    div.className = 'quest-card' + (done ? ' done' : '');
+    div.className = 'quest-card'
+      + (done      ? ' done'       : '')
+      + (justDone  ? ' just-done'  : '')
+      + (isNext    ? ' next-quest' : '');
+
     div.innerHTML = `
       <span class="q-title">${done ? '✅ ' : ''}${q.title}</span>
       <span class="q-desc">${q.desc}</span>`;
     list.appendChild(div);
+  }
+
+  // Banner wenn alle 5 Aufträge erledigt sind
+  if (allDone) {
+    const banner = document.createElement('div');
+    banner.className = 'all-done-banner';
+    banner.textContent = '🏆 Alle Aufträge erfüllt! Du bist ein wahrer Meister-Alchemist!';
+    list.appendChild(banner);
   }
 }
 
@@ -1016,6 +1232,8 @@ function renderAll() {
   renderPotionInfo();
   renderTargets();
   renderQuests();
+  // newlyCompleted nach dem Rendern leeren, damit .just-done nur einmal abgespielt wird
+  state.newlyCompleted = [];
 }
 
 // ============================================================
@@ -1087,27 +1305,61 @@ function brew() {
 
 /**
  * Fertigen Trank auf ein Ziel anwenden.
- * Danach vollständiger State-Reset (Auswahl + Trank).
+ * Holt die zielspezifische Reaktion aus REACTIONS und setzt
+ * temporäre Effekte mit einem Auto-Reset-Timer auf.
  */
 function applyPotion(targetId) {
   if (!state.currentPotion || state.isBrewing) return;
 
-  const effect     = state.currentPotion;
-  const targetName = TARGETS.find(t => t.id === targetId)?.name ?? targetId;
+  const effect   = state.currentPotion;
+  const reaction = REACTIONS[effect.id]?.[targetId]
+    ?? { text: `${effect.name} wirkt!` };
 
-  // Effekt-Status auf dem Ziel setzen
+  // Laufenden Timer für dieses Ziel canceln (neuer Trank überschreibt alten)
+  cancelEffectTimer(targetId);
+
+  // Effekt und Icon-Override in State schreiben
   state.targetEffects[targetId] = effect.id;
+  state.targetIcons[targetId]   = reaction.icon ?? null;
 
-  // Aufträge prüfen bevor State reset
+  // Temporären Effekt: Reset-Timer setzen
+  if (reaction.temporary) {
+    const dur = reaction.duration ?? 4000;
+    state.effectTimers[targetId] = setTimeout(() => resetEffect(targetId), dur);
+  }
+
+  // Aufträge prüfen (vor State-Reset, damit effectId noch stimmt)
   checkQuests(effect.id, targetId);
 
-  // --- VOLLSTÄNDIGER STATE-RESET nach Anwendung ---
+  // --- VOLLSTÄNDIGER BREW-STATE-RESET ---
   state.selected      = [];
   state.currentPotion = null;
   document.getElementById('cauldron-liquid').style.background = '';
 
   renderAll();
-  showToast(`${effect.icon} ${effect.name} wirkt auf ${targetName}!`);
+  showToast(`${effect.icon} ${reaction.text}`);
+}
+
+/**
+ * Effekt auf einem Ziel zurücksetzen (wird von temporären Timern aufgerufen).
+ * Entfernt Effekt-Status und Icon-Override; zeichnet Zielkarten neu.
+ */
+function resetEffect(targetId) {
+  state.targetEffects[targetId] = null;
+  state.targetIcons[targetId]   = null;
+  state.effectTimers[targetId]  = null;
+  renderTargets(); // nur Zielkarten müssen neu gezeichnet werden
+}
+
+/**
+ * Bestehenden Timer für ein Ziel canceln und Referenz löschen.
+ * Verhindert, dass ein alter Timer einen neuen Effekt zurücksetzt.
+ */
+function cancelEffectTimer(targetId) {
+  if (state.effectTimers[targetId]) {
+    clearTimeout(state.effectTimers[targetId]);
+    state.effectTimers[targetId] = null;
+  }
 }
 
 /**
@@ -1147,8 +1399,10 @@ function checkQuests(effectId, targetId) {
 
     if (effectMatches && targetMatches) {
       state.completedQuests.push(q.id);
-      // Versetzt damit der Anwendungs-Toast zuerst erscheint
-      setTimeout(() => showToast(`✅ Auftrag erfüllt: ${q.title}\n🎁 ${q.reward}`, 3500), 1200);
+      // newlyCompleted → renderQuests() zeigt .just-done genau einmal
+      state.newlyCompleted.push(q.id);
+      // Versetzt damit der Anwendungs-Reaktions-Toast zuerst erscheint
+      setTimeout(() => showToast(`✅ Auftrag erfüllt: ${q.title}\n🎁 ${q.reward}`, 3500), 1400);
     }
   }
 }
