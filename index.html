@@ -90,14 +90,15 @@ header h1 {
   transition: border-color 0.3s, background 0.3s, opacity 0.3s;
 }
 .quest-card.done {
-  background: rgba(34,197,94,0.15);
+  background: rgba(34,197,94,0.07);
   border-color: #22c55e;
-  opacity: 0.6;
+  opacity: 0.45;
 }
-/* Nächste offene Aufgabe wird leicht hervorgehoben */
+/* Nächste offene Aufgabe – stärkere Hervorhebung */
 .quest-card.next-quest {
-  border-color: rgba(240,192,64,0.55);
-  box-shadow: 0 0 8px rgba(240,192,64,0.18);
+  border-color: rgba(240,192,64,0.75);
+  background: rgba(240,192,64,0.08);
+  box-shadow: 0 0 10px rgba(240,192,64,0.25);
 }
 /* Kurzer Flash-Effekt bei Erfüllung */
 .quest-card.just-done {
@@ -143,8 +144,8 @@ header h1 {
 }
 .sf-step.sf-active {
   color: var(--accent-gold);
-  border-color: rgba(240,192,64,0.55);
-  background: rgba(240,192,64,0.1);
+  border-color: rgba(240,192,64,0.75);
+  background: rgba(240,192,64,0.14);
   font-weight: bold;
 }
 .sf-step.sf-done { color: #22c55e; opacity: 0.55; }
@@ -409,7 +410,8 @@ header h1 {
 /* Hervorheben wenn Trank bereit zum Anwenden */
 #potion-info.has-potion {
   border-color: var(--accent-gold);
-  box-shadow: 0 0 10px rgba(240,192,64,0.2);
+  box-shadow: 0 0 16px rgba(240,192,64,0.38);
+  background: rgba(240,192,64,0.04);
 }
 .p-idle   { color: var(--text-muted); font-style: italic; font-size: 0.84em; }
 .p-ready  { color: #a0d0ff; font-size: 0.88em; }
@@ -449,10 +451,15 @@ header h1 {
 .t-name   { font-size: 0.88em; font-weight: bold; }
 .t-status { font-size: 0.73em; color: var(--text-muted); min-height: 15px; display: block; margin-top: 2px; }
 
-/* Outline wenn ein Trank angewendet werden kann – lenkt Blick auf Ziele */
+/* Pulsierender Rahmen wenn ein Trank angewendet werden kann */
 .target-card.ready-to-receive {
-  outline: 2px solid rgba(139,92,246,0.55);
+  outline: 2px solid rgba(139,92,246,0.7);
   outline-offset: 2px;
+  animation: ready-pulse 1.4s ease-in-out infinite;
+}
+@keyframes ready-pulse {
+  0%,100% { outline-color: rgba(139,92,246,0.4); }
+  50%     { outline-color: rgba(139,92,246,0.95); box-shadow: 0 0 14px rgba(139,92,246,0.3); }
 }
 
 /* ===== ZIELABHÄNGIGE EFFEKT-VARIANTEN =====
@@ -641,8 +648,10 @@ header h1 {
   text-align: center;
 }
 .re-icon        { font-size: 1.8em; }
-.re-name        { font-size: 0.88em; color: var(--accent-gold); font-weight: bold; margin: 2px 0; }
-.re-ingredients { font-size: 0.72em; color: var(--text-muted); }
+.re-name        { font-size: 0.88em; color: var(--accent-gold); font-weight: bold; margin: 2px 0 4px; }
+.re-ing-icons   { font-size: 1em; letter-spacing: 2px; margin-bottom: 2px; }
+.re-ing-names   { font-size: 0.68em; color: var(--text-muted); line-height: 1.35; }
+.re-count       { font-size: 0.78em; color: var(--text-muted); text-align: center; margin-bottom: 12px; }
 .empty-book     { text-align: center; color: var(--text-muted); font-style: italic; padding: 24px; }
 
 #btn-close {
@@ -679,6 +688,27 @@ header h1 {
   max-width: 340px;
 }
 #toast.hidden { opacity: 0; }
+
+/* ===== ACHIEVEMENT-TOAST (Rezepte & Aufträge) ===== */
+#toast-achievement {
+  position: fixed;
+  bottom: 22px; left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(135deg, #064e3b, #065f46);
+  border: 2px solid #34d399;
+  color: #d1fae5;
+  padding: 9px 22px;
+  border-radius: 10px;
+  font-size: 0.92em;
+  box-shadow: 0 0 14px rgba(52,211,153,0.4);
+  z-index: 200;
+  pointer-events: none;
+  transition: opacity 0.45s;
+  white-space: pre-line;
+  text-align: center;
+  max-width: 380px;
+}
+#toast-achievement.hidden { opacity: 0; }
 
 /* Scrollbar */
 ::-webkit-scrollbar { width: 5px; }
@@ -763,8 +793,10 @@ header h1 {
   </div>
 </div>
 
-<!-- TOAST -->
+<!-- TOAST: Reaktionstext (oben, lila) -->
 <div id="toast" class="hidden"></div>
+<!-- TOAST: Rezepte & Aufträge (unten, grün) -->
+<div id="toast-achievement" class="hidden"></div>
 
 <script>
 'use strict';
@@ -815,20 +847,20 @@ const INGREDIENTS = [
  *   storm     fire+ice        → Drachenschuppe + Frostbeere
  *   plague    fire+poison     → Drachenschuppe + Schattenmoose
  *   glacial   ice+amplify     → Frostbeere + Kristallstaub
- *   growth    light+energy    → Sonnenblüte (allein)
+ *   growth    light+energy    → Sonnenblüte allein, mit Frostbeere oder Schattenmoose
+ *                               (Sonnnenblüte+Kristallstaub ergibt glow prio 8, nicht growth)
  *   thorn     poison+slow     → Schattenmoose + Frostbeere
  *   healing   heal            → Mondblüte (allein oder mit Frostbeere/Schattenmoose)
  *   fire      fire            → Drachenschuppe (allein)
  *   ice       ice             → Frostbeere (allein)
  *   poison    poison          → Schattenmoose (allein)
  *   sparkle   magic           → Kristallstaub (allein)
- *   unstable  (kein Match)    → Fallback, z. B. Mondblüte + Sonnenblüte + Kristallstaub
- *                               (wird von vitality prio 9 abgefangen – tatsächlich fast unmöglich)
+ *   unstable  (kein Match)    → Fallback; tatsächlich kaum erreichbar, da die Tag-Abdeckung dicht ist
  */
 const EFFECTS = [
   // --- Zweikomponenten-Spezialrezepte (hohe Priorität) ---
   { id: 'inferno',   priority: 10, requiredTags: ['fire',     'amplify'],   name: 'Inferno-Trank',    icon: '🌋', liquidColor: '#dc2626', desc: 'Verheerendes Höllenfeuer — alles verbrennt!' },
-  { id: 'vitality',  priority:  9, requiredTags: ['heal',     'energy'],    name: 'Vitalitätstrank',  icon: '💫', liquidColor: '#34d399', desc: 'Alle Lebenskräfte werden vollständig aufgefüllt.' },
+  { id: 'vitality',  priority:  9, requiredTags: ['heal',     'energy'],    name: 'Vitalitätstrank',  icon: '💫', liquidColor: '#34d399', desc: 'Heilt und belebt auf einmal. Gefährlich angenehm.' },
   { id: 'glow',      priority:  8, requiredTags: ['light',    'magic'],     name: 'Leuchttrank',      icon: '✨', liquidColor: '#fbbf24', desc: 'Das Ziel erstrahlt in magischem Licht.' },
   { id: 'darkness',  priority:  8, requiredTags: ['dark',     'magic'],     name: 'Dunkeltrank',      icon: '🌑', liquidColor: '#1f2937', desc: 'Tiefe, undurchdringliche Dunkelheit hüllt das Ziel ein.' },
   { id: 'strength',  priority:  7, requiredTags: ['strength', 'energy'],   name: 'Stärketrank',      icon: '💪', liquidColor: '#f472b6', desc: 'Verleiht übermenschliche Kraft.' },
@@ -836,14 +868,14 @@ const EFFECTS = [
   { id: 'plague',    priority:  7, requiredTags: ['fire',     'poison'],    name: 'Pestfeuer-Trank',  icon: '🐍', liquidColor: '#7f1d1d', desc: 'Giftige schwarze Flammen zerfressen alles.' },
   { id: 'glacial',   priority:  7, requiredTags: ['ice',      'amplify'],   name: 'Glazialtrank',     icon: '🧊', liquidColor: '#1e3a8a', desc: 'Absoluter Frost — kein Entkommen mehr.' },
   // --- Zweikomponenten ohne überlappende Tags (mittlere Priorität) ---
-  { id: 'growth',    priority:  6, requiredTags: ['light',    'energy'],    name: 'Wachstumstrank',   icon: '🌱', liquidColor: '#10b981', desc: 'Lässt Pflanzen prächtig erblühen.' },
-  { id: 'thorn',     priority:  6, requiredTags: ['poison',   'slow'],      name: 'Dorntrank',        icon: '🌵', liquidColor: '#65a30d', desc: 'Vergiftete Dornen brechen durch die Oberfläche.' },
+  { id: 'growth',    priority:  6, requiredTags: ['light',    'energy'],    name: 'Wachstumstrank',   icon: '🌱', liquidColor: '#10b981', desc: 'Alles wächst sofort und ohne Rücksicht auf die Umgebung.' },
+  { id: 'thorn',     priority:  6, requiredTags: ['poison',   'slow'],      name: 'Dorntrank',        icon: '🌵', liquidColor: '#65a30d', desc: 'Stacheln brechen durch. Unangenehm für alle Beteiligten.' },
   // --- Einzelzutaten-Basisrezepte (niedrigere Priorität) ---
-  { id: 'healing',   priority:  5, requiredTags: ['heal'],                  name: 'Heiltrank',        icon: '💚', liquidColor: '#22c55e', desc: 'Heilt Wunden und stärkt die Lebenskraft.' },
-  { id: 'fire',      priority:  5, requiredTags: ['fire'],                  name: 'Feuertrank',       icon: '🔥', liquidColor: '#ef4444', desc: 'Hüllt das Ziel in lodernde Flammen.' },
+  { id: 'healing',   priority:  5, requiredTags: ['heal'],                  name: 'Heiltrank',        icon: '💚', liquidColor: '#22c55e', desc: 'Heilt Wunden. Einfach und zuverlässig.' },
+  { id: 'fire',      priority:  5, requiredTags: ['fire'],                  name: 'Feuertrank',       icon: '🔥', liquidColor: '#ef4444', desc: 'Hüllt das Ziel in lodernde Flammen ein.' },
   { id: 'ice',       priority:  5, requiredTags: ['ice'],                   name: 'Eistrank',         icon: '❄️', liquidColor: '#60a5fa', desc: 'Friert das Ziel in einem Eisblock ein.' },
-  { id: 'poison',    priority:  5, requiredTags: ['poison'],                name: 'Gifttrank',        icon: '☠️', liquidColor: '#a855f7', desc: 'Vergiftet das Ziel langsam.' },
-  { id: 'sparkle',   priority:  4, requiredTags: ['magic'],                 name: 'Funkeltrank',      icon: '🪄', liquidColor: '#c084fc', desc: 'Kristallmagie ohne Richtung — hübsch, aber unklar.' },
+  { id: 'poison',    priority:  5, requiredTags: ['poison'],                name: 'Gifttrank',        icon: '☠️', liquidColor: '#a855f7', desc: 'Vergiftet das Ziel. Farbe inklusive.' },
+  { id: 'sparkle',   priority:  4, requiredTags: ['magic'],                 name: 'Funkeltrank',      icon: '🪄', liquidColor: '#c084fc', desc: 'Kristallmagie ohne klares Ziel. Wunderschön nutzlos.' },
   // --- Fallback wenn kein Rezept passt ---
   { id: 'unstable',  priority:  0, requiredTags: [],                        name: 'Unstabiler Trank', icon: '💥', liquidColor: '#6366f1', desc: 'Unbekannte Kombination — Wirkung unvorhersehbar.' },
 ];
@@ -862,84 +894,84 @@ const EFFECTS = [
  */
 const REACTIONS = {
   healing: {
-    player: { text: 'Du fühlst dich verdächtig gut. Fast schon zu gut.' },
-    plant:  { text: 'Die Pflanze erholt sich. Sie war eigentlich nicht krank.' },
-    dummy:  { text: 'Der Dummy absorbiert alles. Er hat keine Wunden.', temporary: true, duration: 3500 },
+    player: { text: 'Du fühlst dich verdächtig gut. Fast zu gut.' },
+    plant:  { text: 'Die Pflanze erholt sich. Sie war eigentlich gesund.' },
+    dummy:  { text: 'Der Dummy ist geheilt. Er hat nichts gespürt.', temporary: true, duration: 3500 },
   },
   fire: {
-    player: { text: 'Du brennst kurz. Das ist in Ordnung so.', temporary: true, duration: 3000 },
-    plant:  { text: 'Die Pflanze ist leicht angesengt. Sie sieht beleidigt aus.', icon: '🥀', temporary: true, duration: 5000 },
-    dummy:  { text: 'Der Dummy akzeptiert sein feuriges Schicksal mit Würde.' },
+    player: { text: 'Du brennst kurz. Das war absehbar.', temporary: true, duration: 3000 },
+    plant:  { text: 'Die Pflanze ist angesengt. Sie sieht beleidigt aus.', icon: '🥀', temporary: true, duration: 5000 },
+    dummy:  { text: 'Der Dummy nimmt das Feuer mit Würde an.' },
   },
   ice: {
-    player: { text: 'Brr. Du bist jetzt ein menschlicher Eislutscher.', icon: '🧊', temporary: true, duration: 4500 },
-    plant:  { text: 'Die Pflanze ist mitten in der Blüte eingefroren. Traurig.', temporary: true, duration: 5000 },
-    dummy:  { text: 'Der Dummy ist tiefgefroren. Sehr würdevoll.' },
+    player: { text: 'Eingefroren. Du bist sehr still.', icon: '🧊', temporary: true, duration: 4500 },
+    plant:  { text: 'Mitten in der Blüte eingefroren. Traurig.', temporary: true, duration: 5000 },
+    dummy:  { text: 'Der Dummy steht als Eisskulptur. Würdevoll.' },
   },
   poison: {
-    player: { text: 'Du fühlst dich grün. Buchstäblich.', temporary: true, duration: 5000 },
-    plant:  { text: 'Die Pflanze nimmt das Gift auf. Mit Begeisterung.', icon: '🌵' },
-    dummy:  { text: 'Der Dummy ist jetzt ein Biohazard. Bitte nicht anfassen.' },
+    player: { text: 'Du bist grün. Nicht im übertragenen Sinne.', temporary: true, duration: 5000 },
+    plant:  { text: 'Die Pflanze trinkt das Gift wie Wasser.', icon: '🌵' },
+    dummy:  { text: 'Der Dummy ist giftgrün und sieht es als Verbesserung.' },
   },
   growth: {
-    player: { text: 'Du bist aggressiv gesund. Das ist irgendwie einschüchternd.', icon: '🧝' },
-    plant:  { text: 'Die Pflanze ist jetzt ein Baum. Die Pflanze ist jetzt ein Baum.', icon: '🌳' },
-    dummy:  { text: 'Der Dummy hat einen riesigen Kopf bekommen. Alle sind verwirrt.', icon: '🗿' },
+    player: { text: 'Du bist überraschend groß geworden. Und gesund.', icon: '🧝' },
+    plant:  { text: 'Die Pflanze ist jetzt ein Baum. Das ging schnell.', icon: '🌳' },
+    dummy:  { text: 'Der Dummy hat deutlich mehr Präsenz als vorher.', icon: '🗿' },
   },
   strength: {
-    player: { text: 'Du könntest wahrscheinlich einen Kessel hochheben.' },
-    plant:  { text: 'Die Pflanze streckt ihre Blätter aus. Einschüchternd.' },
-    dummy:  { text: 'Der Dummy ist jetzt unangemessen muskulös.' },
+    player: { text: 'Du könntest den Kessel jetzt hochheben. Problemlos.' },
+    plant:  { text: 'Die Pflanze streckt sich bedrohlich. Für eine Pflanze.' },
+    dummy:  { text: 'Der Dummy ist unangemessen muskulös.' },
   },
   glow: {
-    player: { text: 'Du leuchtest. Du bist jetzt eine Lampe.' },
+    player: { text: 'Du leuchtest. Praktisch. Oder störend.' },
     plant:  { text: 'Die Pflanze leuchtet. Sie hatte darum nicht gebeten.' },
-    dummy:  { text: 'Der Dummy leuchtet im Dunkeln. Endlich nützlich.' },
+    dummy:  { text: 'Der Dummy leuchtet im Dunkeln. Endlich ein Nutzen.' },
   },
   darkness: {
-    player: { text: 'Du bist im Schatten verschwunden. Gruselig.', icon: '👤' },
-    plant:  { text: 'Die Pflanze ist im Dunkeln. Sie ist damit nicht einverstanden.', icon: '🪴' },
-    dummy:  { text: 'Der Dummy hat sich mit der Leere vereint.', icon: '🕳️' },
+    player: { text: 'Fast verschwunden. Gruselig still.', icon: '👤' },
+    plant:  { text: 'Die Pflanze ist im Dunkeln. Sie ist dagegen.', icon: '🪴' },
+    dummy:  { text: 'Der Dummy hat sich mit der Dunkelheit vereint.', icon: '🕳️' },
   },
   vitality: {
-    player: { text: 'Du fühlst dich absolut prächtig. Verdächtig prächtig.' },
-    plant:  { text: 'Die Pflanze vibriert vor Lebensenergie. Ist das normal?', icon: '🌿' },
-    dummy:  { text: 'Der Dummy strahlt Wohlbefinden aus. Irgendwie.', temporary: true, duration: 5000 },
+    player: { text: 'Du strahlst Energie aus. Fast unangenehm viel.' },
+    plant:  { text: 'Die Pflanze vibriert vor Lebensenergie. Zu viel davon.', icon: '🌿' },
+    dummy:  { text: 'Der Dummy wirkt gesünder als je zuvor.', temporary: true, duration: 5000 },
   },
   inferno: {
-    player: { text: 'Ohh. Du bist in Ordnung. Größtenteils.', temporary: true, duration: 3500 },
-    plant:  { text: 'Das hat wahrscheinlich gegen das Laborprotokoll verstoßen.', icon: '🌾', temporary: true, duration: 4500 },
-    dummy:  { text: 'Der Dummy hat seine ultimative Bestimmung gefunden.' },
+    player: { text: 'Sehr heiß. Du bist größtenteils in Ordnung.', temporary: true, duration: 3500 },
+    plant:  { text: 'Die Pflanze ist Asche. Laborprotokoll: verletzt.', icon: '🌾', temporary: true, duration: 4500 },
+    dummy:  { text: 'Der Dummy hat seine Bestimmung gefunden. Heroisch.' },
   },
   storm: {
-    player: { text: 'Statische Elektrizität. Deine Frisur ist ruiniert.', temporary: true, duration: 4000 },
-    plant:  { text: 'Die Pflanze wurde vom Blitz getroffen. Sie ist elektrisiert.' },
-    dummy:  { text: 'Der Dummy leitet jetzt Strom. Irgendwie.' },
+    player: { text: 'Statische Elektrizität. Deine Frisur ist Geschichte.', temporary: true, duration: 4000 },
+    plant:  { text: 'Die Pflanze wurde blitzgetroffen. Wortwörtlich elektrisiert.' },
+    dummy:  { text: 'Der Dummy ist ein wandelnder Blitzableiter.' },
   },
   plague: {
-    player: { text: 'Das war ein Fehler. Du riechst nach verbranntem Sumpf.', temporary: true, duration: 4000 },
-    plant:  { text: 'Die Pflanze ist jetzt eine Warnung.', icon: '🪴', temporary: true, duration: 5000 },
-    dummy:  { text: 'Der Dummy ist ein Biohazard-Gebiet. Bitte absperren.' },
+    player: { text: 'Feuer und Gift. Kein guter Trank für dich.', temporary: true, duration: 4000 },
+    plant:  { text: 'Die Pflanze ist eine Warnung an alle anderen.', icon: '🪴', temporary: true, duration: 5000 },
+    dummy:  { text: 'Der Dummy wurde zur Sperrzone erklärt.' },
   },
   glacial: {
-    player: { text: 'Du bist jetzt eine Eisskulptur. Sehr künstlerisch.', temporary: true, duration: 5000 },
-    plant:  { text: 'Die Pflanze ist für immer perfekt konserviert.', icon: '🌸' },
-    dummy:  { text: 'Der Dummy ist eine Eisskulptur. Das ist Kunst.' },
+    player: { text: 'Du bist eine Eisskulptur. Sehr dekorativ.', temporary: true, duration: 5000 },
+    plant:  { text: 'Für immer auf diesem Moment eingefroren.', icon: '🌸' },
+    dummy:  { text: 'Der Dummy ist ein Kunstwerk aus Eis.' },
   },
   thorn: {
-    player: { text: 'Aua. Überall Dornen. Warum hast du das getan.', temporary: true, duration: 3500 },
+    player: { text: 'Dornen überall. Bewegen ist keine Option mehr.', temporary: true, duration: 3500 },
     plant:  { text: 'Die Pflanze ist jetzt ein Verteidigungssystem.', icon: '🌵' },
-    dummy:  { text: 'Der Dummy ist mit Dornen bedeckt. Er findet es gut.' },
+    dummy:  { text: 'Der Dummy ist voller Stacheln. Er mag es.' },
   },
   sparkle: {
-    player: { text: 'Du schimmerst. Wie eine Disco-Kugel.', temporary: true, duration: 4500 },
-    plant:  { text: 'Die Pflanze hat kristalline Schönheit erreicht.', temporary: true, duration: 5500 },
+    player: { text: 'Du funkelst wie eine Diskokugel. Unfreiwillig.', temporary: true, duration: 4500 },
+    plant:  { text: 'Die Pflanze hat kristallinen Glanz erreicht.', temporary: true, duration: 5500 },
     dummy:  { text: 'Der Dummy funkelt. Unerwartet charmant.', temporary: true, duration: 5500 },
   },
   unstable: {
-    player: { text: 'Irgendetwas ist passiert. Du weißt nicht was.', temporary: true, duration: 3000 },
-    plant:  { text: 'Die Pflanze sieht verwirrt aus. Du auch.', temporary: true, duration: 3000 },
-    dummy:  { text: 'Das hat wahrscheinlich gegen das Laborprotokoll verstoßen.', temporary: true, duration: 3000 },
+    player: { text: 'Irgendetwas ist passiert. Du bist noch da.', temporary: true, duration: 3000 },
+    plant:  { text: 'Die Pflanze ist verwirrt. Du auch.', temporary: true, duration: 3000 },
+    dummy:  { text: 'Der Dummy nimmt das stoisch zur Kenntnis.', temporary: true, duration: 3000 },
   },
 };
 
@@ -1418,7 +1450,7 @@ function recordRecipe(effect, ingredientIds) {
   const key = [...ingredientIds].sort().join('+');
   if (state.discovered.some(r => r.key === key)) return;
   state.discovered.push({ key, effectId: effect.id, ingredients: [...ingredientIds] });
-  showToast(`📖 Neues Rezept entdeckt: ${effect.icon} ${effect.name}!`);
+  showAchievement(`📖 Neues Rezept: ${effect.icon} ${effect.name}`, 2800);
 }
 
 // ============================================================
@@ -1443,8 +1475,8 @@ function checkQuests(effectId, targetId) {
       state.completedQuests.push(q.id);
       // newlyCompleted → renderQuests() zeigt .just-done genau einmal
       state.newlyCompleted.push(q.id);
-      // Versetzt damit der Anwendungs-Reaktions-Toast zuerst erscheint
-      setTimeout(() => showToast(`✅ Auftrag erfüllt: ${q.title}\n🎁 ${q.reward}`, 3500), 1400);
+      // Achievement-Toast läuft auf eigenem Slot, kein Delay nötig
+      showAchievement(`✅ Auftrag erfüllt: ${q.title}\n🎁 ${q.reward}`, 3500);
     }
   }
 }
@@ -1457,8 +1489,20 @@ function openBook() {
   const grid = document.getElementById('recipe-grid');
   grid.innerHTML = '';
 
+  // Anzahl entdeckter Rezepte in der Modal-Überschrift
+  const total = EFFECTS.length - 1; // ohne 'unstable' als Benchmark, aber unstable zählt im Spiel
+  const countDiv = document.createElement('div');
+  countDiv.className = 're-count';
+  countDiv.textContent = state.discovered.length === 0
+    ? 'Noch nichts entdeckt — braue deinen ersten Trank!'
+    : `${state.discovered.length} von ${EFFECTS.length} Tränken entdeckt`;
+  grid.appendChild(countDiv);
+
   if (state.discovered.length === 0) {
-    grid.innerHTML = '<div class="empty-book">Noch keine Rezepte entdeckt.<br>Braue deinen ersten Trank!</div>';
+    const empty = document.createElement('div');
+    empty.className = 'empty-book';
+    empty.innerHTML = '⚗️ Wähle Zutaten, braue und entdecke Rezepte.';
+    grid.appendChild(empty);
   } else {
     for (const rec of state.discovered) {
       const effect = EFFECTS.find(e => e.id === rec.effectId);
@@ -1473,12 +1517,12 @@ function openBook() {
 
       const entry = document.createElement('div');
       entry.className = 'recipe-entry';
-      entry.style.borderColor = effect.liquidColor + '99';
+      entry.style.borderColor = effect.liquidColor + 'aa';
       entry.innerHTML = `
         <div class="re-icon">${effect.icon}</div>
         <div class="re-name">${effect.name}</div>
-        <div class="re-ingredients">${icons}</div>
-        <div class="re-ingredients">${names}</div>`;
+        <div class="re-ing-icons">${icons}</div>
+        <div class="re-ing-names">${names}</div>`;
       grid.appendChild(entry);
     }
   }
@@ -1492,20 +1536,45 @@ function closeBook() {
 
 // ============================================================
 // ABSCHNITT 8: BENACHRICHTIGUNGEN
+//
+// Zwei getrennte Toast-Slots verhindern, dass Nachrichten
+// einander überschreiben:
+//   showToast()        – Reaktionstext (oben, lila)
+//   showAchievement()  – Rezepte & Aufträge (unten, grün, Queue)
 // ============================================================
 
 let toastTimer = null;
 
-/**
- * Zeigt einen Toast-Text am oberen Rand.
- * Mehrfachaufrufe ersetzen den laufenden Timer.
- */
+/** Reaktionstext oben – ersetzt sofort (kurze Feedback-Loop). */
 function showToast(msg, duration = 2600) {
   const el = document.getElementById('toast');
   el.textContent = msg;
   el.classList.remove('hidden');
   if (toastTimer) clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.add('hidden'), duration);
+}
+
+const achievementQueue = [];
+let achievementTimer   = null;
+
+/** Reiht eine Meldung in die Achievement-Queue ein. */
+function showAchievement(msg, duration = 3000) {
+  achievementQueue.push({ msg, duration });
+  if (!achievementTimer) drainAchievements();
+}
+
+/** Arbeitet die Queue sequenziell ab. */
+function drainAchievements() {
+  const el = document.getElementById('toast-achievement');
+  if (achievementQueue.length === 0) {
+    el.classList.add('hidden');
+    achievementTimer = null;
+    return;
+  }
+  const { msg, duration } = achievementQueue.shift();
+  el.textContent = msg;
+  el.classList.remove('hidden');
+  achievementTimer = setTimeout(drainAchievements, duration);
 }
 
 // ============================================================
